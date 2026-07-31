@@ -50,4 +50,26 @@ public class OrderApiTests : IClassFixture<CustomWebApplicationFactory>
 		response.Headers.Location.Should().NotBeNull();
 		response.Headers.Location!.ToString().Should().Be($"/orders/{orderResult.Id}");
 	}
+
+	[Fact]
+	public async Task CreateOrder_WithInvalidAmount_ShouldReturnBadRequest()
+	{
+		// Arrange (Подготовка некорректных данных)
+		// Генерируем невалидную отрицательную сумму заказа
+		var invalidAmount = _faker.Random.Decimal(-100, 0);
+		var request = new CreateOrderRequest(invalidAmount);
+
+		// Act (Выполнение запроса)
+		var response = await _client.PostAsync("/orders", JsonContent.Create(request));
+
+		// Assert (Проверка результатов)
+		// 1. Ожидаем, что ручка выдаст статус 400 Bad Request
+		response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+
+		// 2. Дополнительно проверяем структуру ошибки (если хотим убедиться в понятном ответе)
+		var errorResult = await response.Content.ReadFromJsonAsync<Dictionary<string, string>>();
+		errorResult.Should().NotBeNull();
+		errorResult.Should().ContainKey("message");
+		errorResult!["message"].Should().Be("Amount must be greater than zero");
+	}
 }
