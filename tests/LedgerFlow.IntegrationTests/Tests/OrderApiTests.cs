@@ -22,6 +22,7 @@ public class OrderApiTests : IClassFixture<CustomWebApplicationFactory>
 		_factory.OutputHelper = outputHelper;
 
 		_client = _factory.CreateClient();
+		_client.BaseAddress = new Uri("https://localhost:7292");
 		_faker = new Faker("ru");
 	}
 

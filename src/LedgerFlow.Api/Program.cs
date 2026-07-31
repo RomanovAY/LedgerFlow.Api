@@ -3,14 +3,29 @@ using LedgerFlow.Api.Data;
 using LedgerFlow.Api.Messaging;
 using LedgerFlow.Api.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Подключаем базу данных (в рантайме берем строку из конфига, в тестах заменим)
-builder.Services.AddDbContext<OrderDbContext>(options =>
-	options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+// Находим блок подключения БД в Program.cs и переписываем его так:
+if(builder.Configuration["UseInMemoryDb"] == "true")
+{
+	// Если в конфиге флаг тестов, используем InMemory
+	builder.Services.AddDbContext<OrderDbContext>(options =>
+	{
+		options.UseInMemoryDatabase("LedgerFlow_InMemory_TestDb");
 
+		// ЖЕЛЕЗОБЕТОННОЕ РЕШЕНИЕ: Игнорируем тот факт, что InMemory не умеет в транзакции
+		options.ConfigureWarnings(x => x.Ignore(InMemoryEventId.TransactionIgnoredWarning));
+	});
+}
+else
+{
+	// На проде и при локальном запуске жестко используем PostgreSQL
+	builder.Services.AddDbContext<OrderDbContext>(options =>
+		options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+}
 builder.Services.AddSingleton<IMessageBroker, FakeMessageBroker>();
 builder.Services.AddHostedService<OutboxPublisherWorker>();
 
@@ -38,9 +53,7 @@ app.MapGet("/orders/{id:guid}", async (Guid id, OrderDbContext dbContext) =>
 app.MapPost("/orders", async (CreateOrderRequest request, OrderDbContext dbContext) =>
 {
 	if(request.Amount <= 0)
-	{
 		return Results.BadRequest(new { Message = "Amount must be greater than zero" });
-	}
 
 	// Имитируем получение User ID из JWT Claims (в Блоке 4 протестируем авторизацию по-настоящему)
 	var customerId = "user-123-fintech";
