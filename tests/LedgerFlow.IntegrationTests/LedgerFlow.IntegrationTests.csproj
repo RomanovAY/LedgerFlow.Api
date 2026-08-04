@@ -8,6 +8,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <None Remove="Scripts\0001_Initial_Create.sql" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="Scripts\0001_Initial_Create.sql" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
 
     <!-- Синхронизируем xUnit на стабильной v2 версии -->
@@ -33,6 +41,7 @@
     <PackageReference Include="Polly" Version="8.7.0" />
     <PackageReference Include="WireMock.Net" Version="2.13.0" />
     <PackageReference Include="coverlet.collector" Version="6.0.2" />
+    <PackageReference Include="dbup-postgresql" Version="5.0.40" />
   </ItemGroup>
 
   <ItemGroup>

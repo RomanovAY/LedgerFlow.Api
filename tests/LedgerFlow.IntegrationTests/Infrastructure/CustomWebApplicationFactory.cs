@@ -33,22 +33,43 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyn
 
 	public async Task InitializeAsync()
 	{
+		// 1. Командуем Docker-демону запустить Postgres контейнер
 		await _postgresContainer.StartAsync();
 
-		var optionsBuilder = new DbContextOptionsBuilder<OrderDbContext>();
-		optionsBuilder.UseNpgsql(_postgresContainer.GetConnectionString());
-		using var dbContext = new OrderDbContext(optionsBuilder.Options);
-		await dbContext.Database.EnsureCreatedAsync();
+		// 2. Настраиваем и запускаем мигратор DbUp на базе нашего контейнера
+		var connectionString = _postgresContainer.GetConnectionString();
 
-		_dbConnection = new NpgsqlConnection(_postgresContainer.GetConnectionString());
+		var upgrader = DbUp.DeployChanges.To
+			.PostgresqlDatabase(connectionString)
+			// Указываем DbUp искать встроенные .sql ресурсы в текущей сборке (Assembly) тестов
+			.WithScriptsEmbeddedInAssembly(typeof(CustomWebApplicationFactory).Assembly)
+			// Включаем красивое логирование миграций прямо в консоль сборщика
+			.LogToConsole()
+			.Build();
+
+		// Запускаем процесс наката скриптов миграции
+		var result = upgrader.PerformUpgrade();
+
+		// Финтех-стандарт: Если миграция упала, тесты не должны запускаться вслепую
+		if(!result.Successful)
+		{
+			throw new InvalidOperationException($"Критическая ошибка: Не удалось накатить DbUp миграции: {result.Error}");
+		}
+
+		// 3. Инициализируем Respawn для очистки данных поверх уже созданных таблиц
+		_dbConnection = new NpgsqlConnection(connectionString);
 		await _dbConnection.OpenAsync();
 
 		_respawner = await Respawner.CreateAsync(_dbConnection, new RespawnerOptions
 		{
 			DbAdapter = DbAdapter.Postgres,
-			SchemasToInclude = ["public"]
+			SchemasToInclude = ["public"],
+			// Уникальная ценность: С этого момента мы ведем таблицу истории SchemaVersions!
+			// Говорим Respawn ни в коем случае НЕ удалять таблицу истории миграций DbUp между тестами
+			TablesToIgnore = ["SchemaVersions"]
 		});
 	}
+
 
 	public async Task ResetDatabaseAsync()
 	{
