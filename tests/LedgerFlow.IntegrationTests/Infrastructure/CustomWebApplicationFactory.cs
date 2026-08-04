@@ -1,59 +1,77 @@
-﻿using Microsoft.AspNetCore.Hosting;
+﻿using System;
+using System.Collections.Generic;
+using System.Data.Common;
+using System.Linq;
+using System.Threading.Tasks;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
-using Testcontainers.PostgreSql; // Пакет для оркестрации Postgres в Docker
+using Npgsql;
+using Respawn; // Добавлен обязательный using для версии 7.0.0
+using Testcontainers.PostgreSql;
 using LedgerFlow.Api.Data;
+using Xunit;
 using Xunit.Abstractions;
 
 namespace LedgerFlow.IntegrationTests.Infrastructure;
 
-/// <summary>
-/// Кастомная фабрика, которая поднимает реальный PostgreSQL в Docker перед стартом приложения LedgerFlow.Api
-/// </summary>
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-	// Описываем конфигурацию нашего будущего Docker-контейнера
-	private readonly PostgreSqlContainer _postgresContainer = new PostgreSqlBuilder()
-		.WithImage("postgres:17-alpine") // Официальный легковесный финтех-образ Postgres 17
+	// ИСПРАВЛЕНО: Передаем образ прямо в конструктор согласно требованиям Testcontainers 4.x
+	private readonly PostgreSqlContainer _postgresContainer = new PostgreSqlBuilder("postgres:17-alpine")
 		.WithDatabase("ledgerflow_test_db")
 		.WithUsername("fintech_user")
 		.WithPassword("fintech_secure_pass")
 		.Build();
 
+	private Respawner? _respawner;
+	private DbConnection? _dbConnection;
+
 	public ITestOutputHelper? OutputHelper { get; set; }
 
-	/// <summary>
-	/// Интерфейс IAsyncLifetime: Метод запускается ДО старта TestServer и выполнения тестов
-	/// </summary>
 	public async Task InitializeAsync()
 	{
-		// 1. Посылаем команду Docker-демону скачать образ и поднять контейнер на случайном порту
 		await _postgresContainer.StartAsync();
 
-		// 2. Временный ручной мигратор (Этап 4): Создаем таблицы в только что поднятом контейнере
 		var optionsBuilder = new DbContextOptionsBuilder<OrderDbContext>();
 		optionsBuilder.UseNpgsql(_postgresContainer.GetConnectionString());
-
 		using var dbContext = new OrderDbContext(optionsBuilder.Options);
-		await dbContext.Database.EnsureCreatedAsync(); // Гарантирует создание таблиц Orders и OutboxMessages
+		await dbContext.Database.EnsureCreatedAsync();
+
+		_dbConnection = new NpgsqlConnection(_postgresContainer.GetConnectionString());
+		await _dbConnection.OpenAsync();
+
+		_respawner = await Respawner.CreateAsync(_dbConnection, new RespawnerOptions
+		{
+			DbAdapter = DbAdapter.Postgres,
+			SchemasToInclude = ["public"]
+		});
+	}
+
+	public async Task ResetDatabaseAsync()
+	{
+		if(_dbConnection != null && _respawner != null)
+		{
+			await _respawner.ResetAsync(_dbConnection);
+		}
 	}
 
 	protected override void ConfigureWebHost(IWebHostBuilder builder)
 	{
-		// Перехватываем конфигурацию и подставляем динамическую строку подключения из Docker
-		builder.ConfigureAppConfiguration((context, configBuilder) =>
+		// Подавляем предупреждение о неиспользуемом параметре context
+		_ = builder ?? throw new ArgumentNullException(nameof(builder));
+
+		builder.ConfigureAppConfiguration((_, configBuilder) =>
 		{
 			configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
 			{
-				// Главная магия: переопределяем ConnectionString реальным адресом со случайным портом
 				["ConnectionStrings:DefaultConnection"] = _postgresContainer.GetConnectionString(),
 				["Features:UseMockServices"] = "true"
 			});
 		});
 
-		// Блок логирования остается без изменений — он будет выводить SQL-логи от EF Core прямо в тест
 		builder.ConfigureLogging(loggingBuilder =>
 		{
 			loggingBuilder.ClearProviders();
@@ -63,13 +81,28 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyn
 	}
 
 	/// <summary>
-	/// Интерфейс IAsyncLifetime: Метод запускается ПОСЛЕ прогона всех тестов в классе
+	/// Переопределение метода очистки базового класса WebApplicationFactory (IAsyncDisposable)
 	/// </summary>
-	public async Task DisposeAsync()
+	public override async ValueTask DisposeAsync()
 	{
-		// Безжалостно тушим и полностью удаляем контейнер из Docker, очищая за собой систему
+		if(_dbConnection != null)
+		{
+			await _dbConnection.CloseAsync();
+			await _dbConnection.DisposeAsync();
+		}
 		await _postgresContainer.DisposeAsync();
+		await base.DisposeAsync();
 	}
+
+	/// <summary>
+	/// Явная реализация метода очистки интерфейса IAsyncLifetime для xUnit v2
+	/// </summary>
+	async Task IAsyncLifetime.DisposeAsync()
+	{
+		// Просто перенаправляем вызов в наш основной метод DisposeAsync
+		await DisposeAsync();
+	}
+
 }
 
 #region Инфраструктура логирования для xUnit v2
@@ -107,9 +140,7 @@ public class XunitLogger : ILogger
 		{
 			_factory.OutputHelper?.WriteLine(logLine);
 		}
-		catch 
-		{
-		}
+		catch { }
 	}
 }
 

@@ -17,13 +17,14 @@ public class OrderApiTests : IClassFixture<CustomWebApplicationFactory>
 	public OrderApiTests(CustomWebApplicationFactory factory, ITestOutputHelper outputHelper)
 	{
 		_factory = factory ?? throw new ArgumentNullException(nameof(factory));
-
-		// Привязываем логгер текущего теста к фабрике перед его запуском
 		_factory.OutputHelper = outputHelper;
-
 		_client = _factory.CreateClient();
 		_faker = new Faker("ru");
+
+		// ЖЕЛЕЗОБЕТОННАЯ ИЗОЛЯЦИЯ: Перед каждым тестом мгновенно зачищаем таблицы базы данных
+		_factory.ResetDatabaseAsync().GetAwaiter().GetResult();
 	}
+
 
 	[Fact]
 	public async Task CreateOrder_WithValidAmount_ShouldReturnCreatedAndWriteToDb()

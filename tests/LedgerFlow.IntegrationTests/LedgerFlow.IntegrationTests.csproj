@@ -1,7 +1,6 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
-    <OutputType>Exe</OutputType>
     <TargetFramework>net9.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
@@ -9,24 +8,31 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Bogus" Version="35.6.5" />
-    <PackageReference Include="coverlet.collector" Version="6.0.2" />
-    <PackageReference Include="FluentAssertions" Version="8.10.0" />
-    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.18" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.InMemory" Version="9.0.18" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
-    <PackageReference Include="Respawn" Version="7.0.0" />
-    <PackageReference Include="Testcontainers" Version="4.13.0" />
-    <PackageReference Include="Testcontainers.Kafka" Version="4.13.0" />
-    <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
-    <PackageReference Include="Testcontainers.Redis" Version="4.13.0" />
-    <PackageReference Include="WireMock.Net" Version="2.13.0" />
-    <PackageReference Include="Polly" Version="8.7.0" />
-    <PackageReference Include="xunit" Version="2.9.3" />
+
+    <!-- Синхронизируем xUnit на стабильной v2 версии -->
+    <PackageReference Include="xunit" Version="2.9.2" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
-    </PackageReference>    
+    </PackageReference>
+
+    <!-- Выравниваем версию с ядром EF Core приложения (9.0.1) -->
+    <PackageReference Include="Microsoft.AspNetCore.Mvc.Testing" Version="9.0.18" />
+
+    <PackageReference Include="FluentAssertions" Version="8.10.0" />
+    <PackageReference Include="Bogus" Version="35.6.5" />
+
+    <!-- Docker-контейнеры -->
+    <PackageReference Include="Testcontainers" Version="4.13.0" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.13.0" />
+    <PackageReference Include="Testcontainers.Redis" Version="4.13.0" />
+    <PackageReference Include="Testcontainers.Kafka" Version="4.13.0" />
+
+    <PackageReference Include="Respawn" Version="7.0.0" />
+    <PackageReference Include="Polly" Version="8.7.0" />
+    <PackageReference Include="WireMock.Net" Version="2.13.0" />
+    <PackageReference Include="coverlet.collector" Version="6.0.2" />
   </ItemGroup>
 
   <ItemGroup>
