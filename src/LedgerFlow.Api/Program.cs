@@ -5,6 +5,7 @@ using LedgerFlow.Api.BackgroundServices;
 using LedgerFlow.Api.Data;
 using LedgerFlow.Api.Messaging;
 using LedgerFlow.Api.Models;
+using LedgerFlow.Migrations;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,6 +27,9 @@ builder.Services.AddSingleton<IMessageBroker, FakeMessageBroker>();
 builder.Services.AddHostedService<OutboxPublisherWorker>();
 
 var app = builder.Build();
+
+// ВАЖНО: Запуск миграций выполняется на самом старте хоста
+app.Services.RunMigrations();
 
 app.UseHttpsRedirection();
 

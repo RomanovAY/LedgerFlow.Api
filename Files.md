@@ -13,8 +13,10 @@ https://github.com/RomanovAY/LedgerFlow.Api/blob/master/src/LedgerFlow.Api/Progr
 https://github.com/RomanovAY/LedgerFlow.Api/blob/master/src/LedgerFlow.Api/Properties/launchSettings.json
 https://github.com/RomanovAY/LedgerFlow.Api/blob/master/src/LedgerFlow.Api/appsettings.Development.json
 https://github.com/RomanovAY/LedgerFlow.Api/blob/master/src/LedgerFlow.Api/appsettings.json
+https://github.com/RomanovAY/LedgerFlow.Api/blob/master/src/LedgerFlow.Migrations/LedgerFlow.Migrations.csproj
 https://github.com/RomanovAY/LedgerFlow.Api/blob/master/tests/LedgerFlow.IntegrationTests/Infrastructure/CustomWebApplicationFactory.cs
-https://github.com/RomanovAY/LedgerFlow.Api/blob/master/tests/LedgerFlow.IntegrationTests/Infrastructure/XUnitLogger.cs
-https://github.com/RomanovAY/LedgerFlow.Api/blob/master/tests/LedgerFlow.IntegrationTests/Infrastructure/XUnitLoggerProvider.cs
 https://github.com/RomanovAY/LedgerFlow.Api/blob/master/tests/LedgerFlow.IntegrationTests/LedgerFlow.IntegrationTests.csproj
+https://github.com/RomanovAY/LedgerFlow.Api/blob/master/tests/LedgerFlow.IntegrationTests/Properties/launchSettings.json
+https://github.com/RomanovAY/LedgerFlow.Api/blob/master/tests/LedgerFlow.IntegrationTests/Scripts/0001_Initial_Create.sql
+https://github.com/RomanovAY/LedgerFlow.Api/blob/master/tests/LedgerFlow.IntegrationTests/Tests/DatabaseMigrationTests.cs
 https://github.com/RomanovAY/LedgerFlow.Api/blob/master/tests/LedgerFlow.IntegrationTests/Tests/OrderApiTests.cs

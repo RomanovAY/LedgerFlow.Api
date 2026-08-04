@@ -15,4 +15,8 @@
     <PackageReference Include="Microsoft.Extensions.Caching.StackExchangeRedis" Version="9.0.0" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\LedgerFlow.Migrations\LedgerFlow.Migrations.csproj" />
+  </ItemGroup>
+
 </Project>
