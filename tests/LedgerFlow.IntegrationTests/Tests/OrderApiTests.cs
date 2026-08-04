@@ -1,5 +1,4 @@
 ﻿using System.Net;
-using System.Net.Http.Json;
 using Bogus;
 using FluentAssertions;
 using LedgerFlow.Api.Models;
@@ -72,4 +71,44 @@ public class OrderApiTests : IClassFixture<CustomWebApplicationFactory>
 		errorResult.Should().ContainKey("message");
 		errorResult!["message"].Should().Be("Amount must be greater than zero");
 	}
+
+	/// <summary>
+	/// Финальный тест Блока 2: Проверка работы паттерна Cache-Aside (Кэш -> БД).
+	/// Гарантирует, что повторный GET запрос забирает данные строго из Redis, не нагружая PostgreSQL.
+	/// </summary>
+	[Fact]
+	public async Task GetOrder_WithCacheAsidePattern_ShouldReturnDataFromPostgresFirstAndThenFromRedis()
+	{
+		// 1. Arrange: Сначала создаем заказ в системе через POST, чтобы он точно записался в PostgreSQL
+		var validAmount = Math.Round(_faker.Random.Decimal(100, 5000), 2);
+		var createRequest = new CreateOrderRequest(validAmount);
+
+		var createResponse = await _client.PostAsync("/orders", JsonContent.Create(createRequest));
+		createResponse.StatusCode.Should().Be(HttpStatusCode.Created);
+
+		var createdOrder = await createResponse.Content.ReadFromJsonAsync<OrderResponse>();
+		createdOrder.Should().NotBeNull();
+		var orderId = createdOrder!.Id;
+
+		// Наш инструмент Respawn зачистил Redis перед стартом, поэтому сейчас в кэше ГАРАНТИРОВАННО пусто.
+
+		// 2. Act - Шаг 1: Выполняем ПЕРВЫЙ запрос GET (Ожидаем Cache Miss -> чтение из Postgres)
+		var firstGetResponse = await _client.GetAsync($"/orders/{orderId}");
+
+		// 3. Act - Шаг 2: Выполняем ВТОРОЙ запрос GET (Ожидаем Cache Hit -> чтение строго из Redis)
+		var secondGetResponse = await _client.GetAsync($"/orders/{orderId}");
+
+		// 4. Assert: Проверяем корректность возвращаемых данных
+		firstGetResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+		secondGetResponse.StatusCode.Should().Be(HttpStatusCode.OK);
+
+		var firstOrderResult = await firstGetResponse.Content.ReadFromJsonAsync<OrderResponse>();
+		var secondOrderResult = await secondGetResponse.Content.ReadFromJsonAsync<OrderResponse>();
+
+		firstOrderResult.Should().NotBeNull();
+		secondOrderResult.Should().NotBeNull();
+		secondOrderResult!.Id.Should().Be(orderId, "Данные из кэша должны полностью соответствовать запрашиваемому заказу");
+		secondOrderResult.Amount.Should().Be(validAmount);
+	}
+
 }

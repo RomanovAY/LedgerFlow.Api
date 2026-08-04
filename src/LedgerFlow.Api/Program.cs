@@ -1,18 +1,27 @@
+using System.Text.Json;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed; // Добавлен using для кэша
 using LedgerFlow.Api.BackgroundServices;
 using LedgerFlow.Api.Data;
 using LedgerFlow.Api.Messaging;
 using LedgerFlow.Api.Models;
-using Microsoft.EntityFrameworkCore;
-using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Подключаем базу данных: всегда жестко используем PostgreSQL
-// В тестах фабрика автоматически подменит значение ConnectionStrings:DefaultConnection
+// 1. Подключаем базу данных PostgreSQL
 builder.Services.AddDbContext<OrderDbContext>(options =>
-	options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+{
+	options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection"));
+});
 
-// Регистрация инфраструктурных сервисов
+// 2. Подключаем распределенный кэш Redis
+builder.Services.AddStackExchangeRedisCache(options =>
+{
+	options.Configuration = builder.Configuration.GetConnectionString("RedisConnection");
+	options.InstanceName = "LedgerFlow_"; // Префикс для изоляции ключей в Redis
+});
+
+// Регистрация остальных сервисов
 builder.Services.AddSingleton<IMessageBroker, FakeMessageBroker>();
 builder.Services.AddHostedService<OutboxPublisherWorker>();
 
@@ -20,17 +29,43 @@ var app = builder.Build();
 
 app.UseHttpsRedirection();
 
-// 🟢 РУЧКА GET: Получение заказа
-app.MapGet("/orders/{id:guid}", async (Guid id, OrderDbContext dbContext) =>
+// 🟢 РУЧКА GET: Получение заказа по паттерну Cache-Aside (Кэш -> БД)
+app.MapGet("/orders/{id:guid}", async (
+	Guid id,
+	OrderDbContext dbContext,
+	IDistributedCache cache, // Внедряем интерфейс работы с кэшем
+	ILogger<Program> logger) =>
 {
-	var order = await dbContext.Orders.FindAsync(id);
+	var cacheKey = $"order:{id}";
 
+	// Шаг A: Пытаемся прочитать данные из Redis
+	var cachedOrderJson = await cache.GetStringAsync(cacheKey);
+	if(!string.IsNullOrEmpty(cachedOrderJson))
+	{
+		logger.LogInformation("--- [CACHE HIT] Заказ {Id} успешно извлечен из Redis. ---", id);
+		var cachedResponse = JsonSerializer.Deserialize<OrderResponse>(cachedOrderJson);
+		return Results.Ok(cachedResponse);
+	}
+
+	logger.LogInformation("--- [CACHE MISS] Заказ {Id} не найден в кэше. Идем в PostgreSQL. ---", id);
+
+	// Шаг B: Если в кэше пусто (Cache Miss), идем в реляционную базу Postgres
+	var order = await dbContext.Orders.FindAsync(id);
 	if(order is null)
 	{
 		return Results.NotFound(new { Message = $"Order {id} not found" });
 	}
 
 	var response = new OrderResponse(order.Id, order.CustomerId, order.Amount, order.Status, order.CreatedAt);
+
+	// Шаг C: Сериализуем и сохраняем копию заказа в Redis со временем жизни (TTL) 5 минут
+	var cacheOptions = new DistributedCacheEntryOptions
+	{
+		AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5)
+	};
+	var orderJsonToCache = JsonSerializer.Serialize(response);
+	await cache.SetStringAsync(cacheKey, orderJsonToCache, cacheOptions);
+
 	return Results.Ok(response);
 });
 
@@ -59,7 +94,6 @@ app.MapPost("/orders", async (CreateOrderRequest request, OrderDbContext dbConte
 		Payload = JsonSerializer.Serialize(new { order.Id, order.Amount, order.CustomerId })
 	};
 
-	// Атомарная транзакция (БД + Outbox) — теперь она железно поддерживается настоящим Postgres!
 	using var transaction = await dbContext.Database.BeginTransactionAsync();
 	try
 	{

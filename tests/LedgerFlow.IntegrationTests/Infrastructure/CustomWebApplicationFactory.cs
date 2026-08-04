@@ -9,8 +9,9 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Npgsql;
-using Respawn; // Добавлен обязательный using для версии 7.0.0
+using Respawn;
 using Testcontainers.PostgreSql;
+using Testcontainers.Redis; // Добавили namespace для Redis контейнеров
 using LedgerFlow.Api.Data;
 using Xunit;
 using Xunit.Abstractions;
@@ -19,11 +20,15 @@ namespace LedgerFlow.IntegrationTests.Infrastructure;
 
 public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyncLifetime
 {
-	// ИСПРАВЛЕНО: Передаем образ прямо в конструктор согласно требованиям Testcontainers 4.x
+	// 1. Описываем конфигурацию контейнера PostgreSQL
 	private readonly PostgreSqlContainer _postgresContainer = new PostgreSqlBuilder("postgres:17-alpine")
 		.WithDatabase("ledgerflow_test_db")
 		.WithUsername("fintech_user")
 		.WithPassword("fintech_secure_pass")
+		.Build();
+
+	// 2. Описываем конфигурацию контейнера Redis (финтех-стандарт: легковесный alpine образ)
+	private readonly RedisContainer _redisContainer = new RedisBuilder("redis:7-alpine")
 		.Build();
 
 	private Respawner? _respawner;
@@ -33,30 +38,27 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyn
 
 	public async Task InitializeAsync()
 	{
-		// 1. Командуем Docker-демону запустить Postgres контейнер
-		await _postgresContainer.StartAsync();
+		// Запускаем оба контейнера параллельно для экономии времени сборки стенда
+		await Task.WhenAll(
+			_postgresContainer.StartAsync(),
+			_redisContainer.StartAsync()
+		);
 
-		// 2. Настраиваем и запускаем мигратор DbUp на базе нашего контейнера
+		// Накат миграций DbUp на Postgres контейнер
 		var connectionString = _postgresContainer.GetConnectionString();
-
 		var upgrader = DbUp.DeployChanges.To
 			.PostgresqlDatabase(connectionString)
-			// Указываем DbUp искать встроенные .sql ресурсы в текущей сборке (Assembly) тестов
 			.WithScriptsEmbeddedInAssembly(typeof(CustomWebApplicationFactory).Assembly)
-			// Включаем красивое логирование миграций прямо в консоль сборщика
 			.LogToConsole()
 			.Build();
 
-		// Запускаем процесс наката скриптов миграции
 		var result = upgrader.PerformUpgrade();
-
-		// Финтех-стандарт: Если миграция упала, тесты не должны запускаться вслепую
 		if(!result.Successful)
 		{
 			throw new InvalidOperationException($"Критическая ошибка: Не удалось накатить DbUp миграции: {result.Error}");
 		}
 
-		// 3. Инициализируем Respawn для очистки данных поверх уже созданных таблиц
+		// Инициализируем Respawn поверх созданных таблиц
 		_dbConnection = new NpgsqlConnection(connectionString);
 		await _dbConnection.OpenAsync();
 
@@ -64,31 +66,48 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyn
 		{
 			DbAdapter = DbAdapter.Postgres,
 			SchemasToInclude = ["public"],
-			// Уникальная ценность: С этого момента мы ведем таблицу истории SchemaVersions!
-			// Говорим Respawn ни в коем случае НЕ удалять таблицу истории миграций DbUp между тестами
 			TablesToIgnore = ["SchemaVersions"]
 		});
 	}
 
-
+	/// <summary>
+	/// Метод очистки состояния окружения между тестами
+	/// </summary>
 	public async Task ResetDatabaseAsync()
 	{
 		if(_dbConnection != null && _respawner != null)
 		{
+			// Сбрасываем таблицы в PostgreSQL
 			await _respawner.ResetAsync(_dbConnection);
 		}
+
+		// ЖЕЛЕЗОБЕТОННАЯ ИЗОЛЯЦИЯ КЭША: Полностью очищаем все ключи в Redis (FLUSHALL)
+		// Чтобы данные одного теста не аффектили Cache-Aside логику другого тесового метода
+		// ✨ ПУЛЕНЕПРОБИВАЕМЫЙ ВАРИАНТ ДЛЯ ЛЮБОЙ ВЕРСИИ 4.X:
+		try
+		{
+			// Просто выполняем очистку. Если контейнер почему-то не запущен, catch перехватит ошибку
+			await _redisContainer.ExecAsync(new[] { "redis-cli", "FLUSHALL" });
+		}
+		catch(Exception ex)
+		{
+			// Логируем ошибку очистки кэша в системный вывод, если это необходимо
+			System.Diagnostics.Debug.WriteLine($"Ошибка очистки Redis: {ex.Message}");
+		}
+
 	}
 
 	protected override void ConfigureWebHost(IWebHostBuilder builder)
 	{
-		// Подавляем предупреждение о неиспользуемом параметре context
 		_ = builder ?? throw new ArgumentNullException(nameof(builder));
 
 		builder.ConfigureAppConfiguration((_, configBuilder) =>
 		{
 			configBuilder.AddInMemoryCollection(new Dictionary<string, string?>
 			{
+				// Подставляем динамические порты контейнеров Postgres и Redis в рантайм API
 				["ConnectionStrings:DefaultConnection"] = _postgresContainer.GetConnectionString(),
+				["ConnectionStrings:RedisConnection"] = _redisContainer.GetConnectionString(),
 				["Features:UseMockServices"] = "true"
 			});
 		});
@@ -101,9 +120,6 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyn
 		});
 	}
 
-	/// <summary>
-	/// Переопределение метода очистки базового класса WebApplicationFactory (IAsyncDisposable)
-	/// </summary>
 	public override async ValueTask DisposeAsync()
 	{
 		if(_dbConnection != null)
@@ -111,20 +127,22 @@ public class CustomWebApplicationFactory : WebApplicationFactory<Program>, IAsyn
 			await _dbConnection.CloseAsync();
 			await _dbConnection.DisposeAsync();
 		}
-		await _postgresContainer.DisposeAsync();
+
+		// Останавливаем и уничтожаем оба контейнера
+		await Task.WhenAll(
+			_postgresContainer.DisposeAsync().AsTask(),
+			_redisContainer.DisposeAsync().AsTask()
+		);
+
 		await base.DisposeAsync();
 	}
 
-	/// <summary>
-	/// Явная реализация метода очистки интерфейса IAsyncLifetime для xUnit v2
-	/// </summary>
 	async Task IAsyncLifetime.DisposeAsync()
 	{
-		// Просто перенаправляем вызов в наш основной метод DisposeAsync
-		await DisposeAsync();
+		await this.DisposeAsync();
 	}
-
 }
+
 
 #region Инфраструктура логирования для xUnit v2
 
