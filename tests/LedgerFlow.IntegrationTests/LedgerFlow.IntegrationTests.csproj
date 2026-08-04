@@ -46,6 +46,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\LedgerFlow.Api\LedgerFlow.Api.csproj" />
+    <ProjectReference Include="..\..\src\LedgerFlow.Migrations\LedgerFlow.Migrations.csproj" />
   </ItemGroup>
 
   <ItemGroup>

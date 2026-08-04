@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 18
-VisualStudioVersion = 18.8.12021.73 stable
+VisualStudioVersion = 18.8.12021.73
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{2C02A4F0-613A-4012-9C01-7BF41E6F9FD6}"
 EndProject
@@ -10,6 +10,8 @@ EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{C95CA649-B570-410A-B1D4-ABB166D05646}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LedgerFlow.IntegrationTests", "tests\LedgerFlow.IntegrationTests\LedgerFlow.IntegrationTests.csproj", "{7ACD4969-D4BE-4F90-88E5-23ABE75DC4C0}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "LedgerFlow.Migrations", "src\LedgerFlow.Migrations\LedgerFlow.Migrations.csproj", "{BCD7C7D8-E0EF-4932-996D-8DFED08CF96F}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -25,6 +27,10 @@ Global
 		{7ACD4969-D4BE-4F90-88E5-23ABE75DC4C0}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{7ACD4969-D4BE-4F90-88E5-23ABE75DC4C0}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{7ACD4969-D4BE-4F90-88E5-23ABE75DC4C0}.Release|Any CPU.Build.0 = Release|Any CPU
+		{BCD7C7D8-E0EF-4932-996D-8DFED08CF96F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{BCD7C7D8-E0EF-4932-996D-8DFED08CF96F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{BCD7C7D8-E0EF-4932-996D-8DFED08CF96F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{BCD7C7D8-E0EF-4932-996D-8DFED08CF96F}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
